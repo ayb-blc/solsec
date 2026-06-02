@@ -1,0 +1,76 @@
+name: Incremental Security Scan
+
+on:
+  pull_request:
+    paths:
+      - "**/*.sol"
+      - "**/*.vy"
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install solc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:ethereum/ethereum
+          sudo apt-get update
+          sudo apt-get install -y solc
+
+      - name: Build solsec
+        run: go install ./cmd/solsec
+
+      - name: Restore solsec analysis cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/solsec
+          key: solsec-analysis-${{ github.repository }}-${{ github.base_ref }}-${{ github.sha }}
+          restore-keys: |
+            solsec-analysis-${{ github.repository }}-${{ github.base_ref }}-
+            solsec-analysis-${{ github.repository }}-
+
+      - name: Run incremental scan
+        id: scan
+        continue-on-error: true
+        run: |
+          if [ -d contracts ]; then
+            solsec scan ./contracts \
+              --git-diff \
+              --git-ref origin/${{ github.base_ref }} \
+              --format sarif \
+              --output results.sarif \
+              --repo-root "${{ github.workspace }}" \
+              --fail-on high
+          else
+            echo "No ./contracts directory found; skipping incremental security scan."
+          fi
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('results.sarif') != ''
+        with:
+          sarif_file: results.sarif
+          category: solsec-incremental
+
+      - name: Fail workflow on high-risk findings
+        if: steps.scan.outcome == 'failure'
+        run: exit 1

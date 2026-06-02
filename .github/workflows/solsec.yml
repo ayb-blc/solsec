@@ -1,0 +1,91 @@
+name: Solidity Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install solc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:ethereum/ethereum
+          sudo apt-get update
+          sudo apt-get install -y solc
+
+      - name: Install solsec
+        run: go install ./cmd/solsec
+
+      - name: Run security scan
+        id: scan
+        continue-on-error: true
+        run: |
+          if [ -d contracts ]; then
+            solsec scan ./contracts \
+              --format sarif \
+              --output results.sarif \
+              --repo-root "${{ github.workspace }}" \
+              --fail-on high
+          else
+            echo "No ./contracts directory found; skipping repository self-scan."
+          fi
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('results.sarif') != ''
+        with:
+          sarif_file: results.sarif
+          category: solsec
+
+      - name: Generate Markdown report
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -d contracts ]; then
+            solsec scan ./contracts \
+              --format markdown \
+              --output audit-report.md \
+              --project "${{ github.repository }}" \
+              --verbose \
+              --fail-on critical
+          else
+            echo "No ./contracts directory found; skipping Markdown report."
+          fi
+
+      - name: Comment PR with findings
+        if: github.event_name == 'pull_request' && hashFiles('audit-report.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('audit-report.md', 'utf8');
+            const body = report.length > 60000
+              ? report.substring(0, 60000) + '\n\n*Report truncated. See artifacts for full report.*'
+              : report;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Fail workflow on high-risk findings
+        if: steps.scan.outcome == 'failure'
+        run: exit 1

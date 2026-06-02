@@ -1,0 +1,5 @@
+
+ solsec — Solidity Security Analyzer 
+1 files analyzed
+
+✓ No vulnerabilities detected

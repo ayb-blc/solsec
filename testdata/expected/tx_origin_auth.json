@@ -1,0 +1,15 @@
+{
+  "contract_file": "vulnerable/tx_origin/auth_bypass.sol",
+  "expected_findings": [
+    {
+      "detector": "tx-origin",
+      "severity": "HIGH",
+      "must_contain": "tx.origin"
+    },
+    {
+      "detector": "tx-origin",
+      "severity": "HIGH",
+      "must_contain": "tx.origin"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "contract_file": "vulnerable/reentrancy/basic.sol",
+  "expected_findings": [
+    {
+      "detector": "reentrancy",
+      "severity": "CRITICAL",
+      "line": 28,
+      "must_contain": "withdraw"
+    }
+  ]
+}

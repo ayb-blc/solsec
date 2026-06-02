@@ -1,0 +1,27 @@
+
+ solsec — Solidity Security Analyzer 
+1 files analyzed
+
+
+ 🔴 CRITICAL (1)
+──────────────────────────────────────────────────────────
+
+  [1] Potential reentrancy in function 'withdraw'
+      contracts/Vault.sol:12  [reentrancy]
+
+      │ (bool ok,) = msg.sender.call{value: amount}("");
+
+      ℹ External interaction happens before a later state update.
+
+      ✎ Move state updates before external calls.
+
+      🏷  reentrancy, cei
+      Confidence: HIGH
+
+ Summary 
+──────────────────────────────────────────────────────────
+  Files analyzed:    1
+  Files with issues: 1
+  Total findings:    1
+
+  CRITICAL   ████████████████████ 1

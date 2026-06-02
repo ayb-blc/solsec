@@ -1,0 +1,64 @@
+# Binaries and build output
+/bin/
+/dist/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go test and coverage artifacts
+*.test
+*.prof
+coverage.out
+coverage.html
+
+# Solsec generated reports and local analysis output
+results.sarif
+*.sarif
+*.sarif.json
+solsec-report.*
+solsec-baseline.json
+formal-verification/
+
+# Incremental/cache artifacts
+.solsec-cache/
+.cache/
+cache/
+
+# Solidity/Foundry/Hardhat/Brownie generated output
+out/
+artifacts/
+typechain/
+typechain-types/
+broadcast/
+cache_hardhat/
+coverage/
+coverage.json
+lcov.info
+node_modules/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+secrets/
+
+# Editor and OS files
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary scratch files
+tmp/
+temp/
+*.tmp
+test.md

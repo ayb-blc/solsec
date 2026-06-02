@@ -1,0 +1,69 @@
+# .github/workflows/test.yml
+
+name: Test Suite
+
+on: [push, pull_request]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit tests
+        run: go test ./internal/... -v -race -timeout 60s
+
+      - name: Check coverage
+        run: |
+          go test ./internal/... -coverprofile=coverage.out
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${COVERAGE}%"
+          # Minimum coverage threshold. Raise this as the test suite matures.
+          awk -v coverage="$COVERAGE" 'BEGIN { exit (coverage < 20.0) ? 1 : 0 }' || {
+            echo "Coverage below minimum threshold (20%)"
+            exit 1
+          }
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Install solc
+        run: |
+          sudo add-apt-repository ppa:ethereum/ethereum -y
+          sudo apt-get update -q
+          sudo apt-get install -y solc
+          solc --version
+
+      - name: Run integration tests
+        run: go test ./tests/... -v -timeout 120s
+
+  accuracy-gate:
+    name: Accuracy Gate
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Install solc
+        run: |
+          sudo add-apt-repository ppa:ethereum/ethereum -y
+          sudo apt-get update -q
+          sudo apt-get install -y solc
+
+      - name: Check detector accuracy
+        run: |
+          go test ./tests/accuracy/... -v -run TestDetectorAccuracy

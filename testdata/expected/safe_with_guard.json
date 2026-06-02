@@ -1,0 +1,4 @@
+{
+  "contract_file": "safe/reentrancy/with_guard.sol",
+  "expected_findings": []
+}
