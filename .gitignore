@@ -1,64 +1,133 @@
-# Binaries and build output
+# -----------------------------------------------------------------------------
+
+# Build artifacts
+
+# -----------------------------------------------------------------------------
+
 /bin/
 /dist/
 /build/
+
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
+*.a
 
-# Go test and coverage artifacts
+# -----------------------------------------------------------------------------
+
+# Go artifacts
+
+# -----------------------------------------------------------------------------
+
 *.test
 *.prof
+*.pprof
 coverage.out
 coverage.html
 
-# Solsec generated reports and local analysis output
+# Go workspace files
+
+go.work
+go.work.sum
+
+# -----------------------------------------------------------------------------
+
+# Solsec reports and analysis output
+
+# -----------------------------------------------------------------------------
+
 results.sarif
 *.sarif
 *.sarif.json
+
 solsec-report.*
 solsec-baseline.json
+
 formal-verification/
 
-# Incremental/cache artifacts
+# -----------------------------------------------------------------------------
+
+# Solsec cache
+
+# -----------------------------------------------------------------------------
+
 .solsec-cache/
 .cache/
-cache/
+/cache/
 
-# Solidity/Foundry/Hardhat/Brownie generated output
+# -----------------------------------------------------------------------------
+
+# Solidity / Foundry / Hardhat / Brownie
+
+# -----------------------------------------------------------------------------
+
 out/
 artifacts/
+
 typechain/
 typechain-types/
+
 broadcast/
+
 cache_hardhat/
+/cache/
+
 coverage/
 coverage.json
 lcov.info
+
 node_modules/
 
+# -----------------------------------------------------------------------------
+
 # Local configuration and secrets
+
+# -----------------------------------------------------------------------------
+
 .env
 .env.*
 !.env.example
+
 *.pem
 *.key
 *.keystore
+
 secrets/
 
-# Editor and OS files
+# -----------------------------------------------------------------------------
+
+# IDE / Editor
+
+# -----------------------------------------------------------------------------
+
 .vscode/
 !.vscode/extensions.json
+
 .idea/
+
 *.swp
 *.swo
 *~
+
+# -----------------------------------------------------------------------------
+
+# Operating system files
+
+# -----------------------------------------------------------------------------
+
 .DS_Store
 Thumbs.db
 
-# Temporary scratch files
+# -----------------------------------------------------------------------------
+
+# Temporary files
+
+# -----------------------------------------------------------------------------
+
 tmp/
 temp/
+
 *.tmp
 test.md
