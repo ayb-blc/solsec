@@ -1,6 +1,33 @@
-# Solsec
+<p align="center">
+  <img src="assets/logo.png" alt="Solsec - Solidity Security Analyzer" width="100%" />
+</p>
 
-Fast, CI-friendly static analysis for Solidity smart contracts.
+<h1 align="center">Solsec</h1>
+
+<p align="center">
+  <strong>Fast, CI-friendly static analysis for Solidity smart contracts.</strong>
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#detectors">Detectors</a>
+  ·
+  <a href="#configuration">Configuration</a>
+  ·
+  <a href="#ci-example">CI</a>
+</p>
+
+<p align="center">
+  <img alt="Status" src="https://img.shields.io/badge/status-v0.1.0--beta-0f6fff?style=for-the-badge" />
+  <img alt="Language" src="https://img.shields.io/badge/Go-static%20analysis-00ADD8?style=for-the-badge&logo=go&logoColor=white" />
+  <img alt="Target" src="https://img.shields.io/badge/Solidity-security%20scanner-363636?style=for-the-badge&logo=solidity&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" />
+</p>
+
+---
 
 Solsec is a Web3 security scanner focused on high-signal findings, explainable
 detector logic, and practical integration into developer workflows. It detects
@@ -8,7 +35,7 @@ common smart contract vulnerability patterns, emits machine-readable reports,
 supports baselines and suppressions, and includes experimental bridges for
 on-chain and formal verification workflows.
 
-> Status: `v0.1.0-beta`  
+> [!IMPORTANT]
 > Solsec is under active development. Treat results as security signals for
 > review, not as a replacement for a professional smart contract audit.
 
@@ -16,17 +43,19 @@ on-chain and formal verification workflows.
 
 ## Highlights
 
-- Solidity static analysis from files or directories
-- Low false-positive detector tuning against fixture suites and OpenZeppelin
-- Text, JSON, SARIF, and Markdown output
-- GitHub Code Scanning compatible SARIF
-- `.solsec.yml` project configuration
-- Inline and config-based suppressions
-- Baseline support for CI/CD
-- Incremental cache and git-diff scanning
-- Cross-contract analysis mode
-- On-chain source fetching via Etherscan-compatible APIs
-- Formal verification bridge for Echidna and Manticore target generation
+| Area | Capability |
+| --- | --- |
+| Analysis | Solidity static analysis from files or directories |
+| Signal quality | Low false-positive detector tuning against fixture suites and OpenZeppelin |
+| Reporting | Text, JSON, SARIF, and Markdown output |
+| GitHub integration | GitHub Code Scanning compatible SARIF |
+| Configuration | `.solsec.yml` project configuration |
+| Suppressions | Inline and config-based suppressions |
+| CI adoption | Baseline support for CI/CD |
+| Performance | Incremental cache and git-diff scanning |
+| Project analysis | Cross-contract analysis mode |
+| On-chain workflows | On-chain source fetching via Etherscan-compatible APIs |
+| Verification bridge | Formal verification bridge for Echidna and Manticore target generation |
 
 ---
 
