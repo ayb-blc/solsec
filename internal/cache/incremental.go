@@ -56,7 +56,7 @@ func NewIncrementalAnalyzer(
 	opts IncrementalOptions,
 ) (*IncrementalAnalyzer, error) {
 	if opts.ToolVersion == "" {
-		opts.ToolVersion = "0.1.0"
+		opts.ToolVersion = "0.2.0"
 	}
 	if opts.Workers <= 0 {
 		opts.Workers = 4
@@ -360,12 +360,12 @@ func collectSmartContractFiles(dir string) ([]string, error) {
 			if err != nil {
 				return err
 			}
-			if filepath.Clean(abs) != root && (name == "node_modules" || strings.HasPrefix(name, ".")) {
+			if filepath.Clean(abs) != root && shouldSkipDefaultSmartContractPath(path, name) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if IsSmartContractFile(path) {
+		if IsSmartContractFile(path) && !shouldSkipDefaultSmartContractPath(path, filepath.Base(path)) {
 			abs, err := filepath.Abs(path)
 			if err != nil {
 				return err
@@ -375,4 +375,25 @@ func collectSmartContractFiles(dir string) ([]string, error) {
 		return nil
 	})
 	return files, err
+}
+
+func shouldSkipDefaultSmartContractPath(path, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	normalized := filepath.ToSlash(path)
+	lowerName := strings.ToLower(name)
+	lowerPath := strings.ToLower(normalized)
+
+	if lowerName == "node_modules" || lowerName == "lib" || lowerName == "vendor" ||
+		lowerName == "out" || lowerName == "artifacts" || lowerName == "cache" ||
+		lowerName == "mock" || lowerName == "mocks" {
+		return true
+	}
+	if strings.Contains(lowerPath, "/mock/") || strings.Contains(lowerPath, "/mocks/") ||
+		strings.Contains(lowerPath, "/test/") || strings.Contains(lowerPath, "/tests/") {
+		return true
+	}
+	return strings.HasSuffix(lowerName, "_test.sol") ||
+		strings.HasSuffix(lowerName, ".t.sol")
 }

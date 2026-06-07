@@ -84,15 +84,21 @@ func TestDefaultRegistry_NoDuplicateIDs(t *testing.T) {
 func TestDefaultRegistry_AllEnabledByDefault(t *testing.T) {
 	r := rules.DefaultRegistry()
 	all := r.All()
-	enabled := r.Enabled()
 
 	if len(all) == 0 {
 		t.Fatal("no rules registered")
 	}
 
-	if len(enabled) != len(all) {
-		t.Errorf("enabled=%d, total=%d — all rules should be enabled by default",
-			len(enabled), len(all))
+	for _, rule := range all {
+		if rule.ID == rules.IDInit005 {
+			if rule.Enabled {
+				t.Errorf("%s should be disabled by default", rule.ID)
+			}
+			continue
+		}
+		if !rule.Enabled {
+			t.Errorf("%s should be enabled by default", rule.ID)
+		}
 	}
 }
 

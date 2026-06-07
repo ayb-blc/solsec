@@ -1,11 +1,11 @@
 package rules
 
-// Format: SOLSEC-<CATEGORY>-<NUMBER>
+// RuleID is a stable identifier in the format SOLSEC-<CATEGORY>-<NUMBER>.
 type RuleID string
 
 func (r RuleID) String() string { return string(r) }
 
-// Category kural kategorisi.
+// Category groups rules by vulnerability family.
 type Category string
 
 const (
@@ -48,7 +48,7 @@ const (
 )
 
 type Rule struct {
-	// ID benzersiz kural ID'si
+	// ID is the unique rule identifier.
 	ID RuleID `json:"id" yaml:"id"`
 
 	Name string `json:"name" yaml:"name"`
@@ -61,7 +61,7 @@ type Rule struct {
 
 	Confidence Confidence `json:"confidence" yaml:"confidence"`
 
-	// Category kural kategorisi
+	// Category groups the rule by vulnerability family.
 	Category Category `json:"category" yaml:"category"`
 
 	// Language desteklenen dil

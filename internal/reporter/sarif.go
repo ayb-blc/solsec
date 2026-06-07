@@ -162,7 +162,7 @@ func (r *SARIFReporter) Report(results []analyzer.AnalysisResult) error {
 				Tool: sarifTool{
 					Driver: sarifDriver{
 						Name:           "solsec",
-						Version:        "0.1.0",
+						Version:        "0.2.0",
 						InformationURI: "https://github.com/ayb-blc/solsec",
 						Rules:          rules,
 					},

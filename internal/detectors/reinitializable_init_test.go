@@ -1,0 +1,113 @@
+package detectors_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/detectors"
+	"github.com/ayb-blc/solsec/internal/rules"
+)
+
+func TestReinitializableInit_CriticalPrivilegedState(t *testing.T) {
+	findings := analyzeInitFixture(t, "../../testdata/fixtures/init/vulnerable_critical.sol")
+	if len(findings) != 1 {
+		t.Fatalf("findings=%d, want 1", len(findings))
+	}
+	if findings[0].RuleID != rules.IDInit001 {
+		t.Fatalf("RuleID=%s, want %s", findings[0].RuleID, rules.IDInit001)
+	}
+	if findings[0].Severity != analyzer.Critical {
+		t.Fatalf("Severity=%s, want CRITICAL", findings[0].Severity)
+	}
+}
+
+func TestReinitializableInit_HighNonCriticalState(t *testing.T) {
+	findings := analyzeInitFixture(t, "../../testdata/fixtures/init/vulnerable_high.sol")
+	if len(findings) != 1 {
+		t.Fatalf("findings=%d, want 1", len(findings))
+	}
+	if findings[0].Severity != analyzer.High {
+		t.Fatalf("Severity=%s, want HIGH", findings[0].Severity)
+	}
+}
+
+func TestReinitializableInit_SafeFixtures(t *testing.T) {
+	for _, path := range []string{
+		"../../testdata/fixtures/init/safe_initializer_modifier.sol",
+		"../../testdata/fixtures/init/safe_manual_flag.sol",
+		"../../testdata/fixtures/init/safe_onlyowner_setup.sol",
+	} {
+		t.Run(path, func(t *testing.T) {
+			findings := analyzeInitFixture(t, path)
+			if len(findings) != 0 {
+				t.Fatalf("expected no findings, got %d: %#v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestReinitializableInit_MultilineInitializerModifier_NoFinding(t *testing.T) {
+	source := `
+pragma solidity ^0.8.0;
+contract Token {
+    modifier initializer() { _; }
+    function initialize(
+        address pool,
+        string memory name,
+        string memory symbol
+    )
+        external
+        initializer
+    {
+        pool;
+        name;
+        symbol;
+    }
+}`
+	d := detectors.NewReinitializableInitDetector()
+	findings, err := d.Analyze(strings.Split(source, "\n"), source, "Token.sol")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %#v", len(findings), findings)
+	}
+}
+
+func TestReinitializableInit_ProxyImplementationGuard_NoFinding(t *testing.T) {
+	source := `
+pragma solidity ^0.8.0;
+contract InitializableUpgradeabilityProxy {
+    function initialize(address logic, bytes memory data) public payable {
+        require(_implementation() == address(0));
+        _setImplementation(logic);
+        data;
+    }
+    function _implementation() internal view returns (address) {}
+    function _setImplementation(address logic) internal {}
+}`
+	d := detectors.NewReinitializableInitDetector()
+	findings, err := d.Analyze(strings.Split(source, "\n"), source, "Proxy.sol")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected no findings, got %d: %#v", len(findings), findings)
+	}
+}
+
+func analyzeInitFixture(t *testing.T, path string) []analyzer.Finding {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	source := string(data)
+	findings, err := detectors.NewReinitializableInitDetector().Analyze(strings.Split(source, "\n"), source, path)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	return findings
+}

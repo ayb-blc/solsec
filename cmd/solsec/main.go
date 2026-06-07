@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const toolVersion = "0.1.0"
+const toolVersion = "0.2.0"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -48,6 +48,7 @@ var (
 	prettyJSON    bool
 	repoRoot      string
 	projectName   string
+	experimental  bool
 	exitCode      int
 
 	incrementalMode bool
@@ -108,9 +109,19 @@ var scanCmd = &cobra.Command{
 			return err
 		}
 
-		registry := detectors.DefaultRegistry()
-		if err := validateDetectorNames(onlyDetectors, registry.Names()); err != nil {
+		validationRegistry := detectors.AllRegistry()
+		if err := validateDetectorNames(onlyDetectors, validationRegistry.Names()); err != nil {
 			return err
+		}
+		registry := detectors.DefaultRegistry()
+		if experimental {
+			registry = analyzer.NewRegistry(append(detectors.DefaultDetectors(), detectors.ExperimentalDetectors()...)...)
+			if !noColor {
+				fmt.Fprintln(os.Stderr, "Experimental mode enabled: storage-gap-missing and override-removes-restriction are active.")
+			}
+		}
+		if len(onlyDetectors) > 0 {
+			registry = validationRegistry
 		}
 
 		cfg := analyzer.Config{
@@ -390,6 +401,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&prettyJSON, "pretty", false, "Pretty-print JSON output")
 	scanCmd.Flags().StringVar(&repoRoot, "repo-root", "", "Repository root for SARIF relative paths")
 	scanCmd.Flags().StringVar(&projectName, "project", "Unknown", "Project name for Markdown report")
+	scanCmd.Flags().BoolVar(&experimental, "experimental", false, "Enable experimental detectors (storage-gap-missing, override-removes-restriction)")
 	scanCmd.Flags().BoolVarP(&incrementalMode, "incremental", "i", false, "Enable cache-based incremental analysis")
 	scanCmd.Flags().BoolVar(&useGitDiff, "git-diff", false, "Analyze changed files from git diff; unchanged files are reused from cache when available")
 	scanCmd.Flags().StringVar(&gitRef, "git-ref", "", "Analyze files changed since this git ref (branch, tag, or commit)")

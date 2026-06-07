@@ -166,6 +166,9 @@ func (d *AccessControlDetector) analyzeFunction(
 	if isFunctionSafeFromAC(fn.signature, fn.lines) {
 		return nil
 	}
+	if fn.name == "initialize" && hasManualInitializerGuard(fn.lines) {
+		return nil
+	}
 	if fn.name == "burn" && burnsCallerOwnedAsset(fn.lines) {
 		return nil
 	}
@@ -388,6 +391,21 @@ func isFunctionInlineProtected(lines []string) bool {
 			if pattern.MatchString(line) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func hasManualInitializerGuard(lines []string) bool {
+	source := strings.Join(lines, "\n")
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`require\s*\(\s*!\s*_?initialized\b`),
+		regexp.MustCompile(`require\s*\(\s*_?initialized\s*==\s*false\b`),
+		regexp.MustCompile(`if\s*\(\s*_?initialized\s*\)\s*(?:revert|return|\{)`),
+	}
+	for _, pattern := range patterns {
+		if pattern.MatchString(source) {
+			return true
 		}
 	}
 	return false

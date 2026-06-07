@@ -8,7 +8,7 @@ import (
 	"github.com/ayb-blc/solsec/internal/analyzer"
 )
 
-// Detection stratejisi:
+// TxOriginDetector detects tx.origin usage in authentication-sensitive contexts.
 type TxOriginDetector struct {
 	authPatterns []*regexp.Regexp
 

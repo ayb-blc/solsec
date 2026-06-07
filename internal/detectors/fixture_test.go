@@ -18,6 +18,7 @@ func TestDetectorFixtureMatrix(t *testing.T) {
 		{"unchecked-call", "../../testdata/fixtures/unchecked_call/*.sol", detectors.NewUncheckedCallDetectorV2()},
 		{"integer-overflow", "../../testdata/fixtures/integer_overflow/*.sol", detectors.NewIntegerOverflowDetectorV2()},
 		{"access-control", "../../testdata/fixtures/access_control/*.sol", detectors.NewAccessControlDetector()},
+		{"reinitializable-init", "../../testdata/fixtures/init/[sv]*.sol", detectors.NewReinitializableInitDetector()},
 	}
 
 	for _, tc := range cases {

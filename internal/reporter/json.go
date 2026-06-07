@@ -143,7 +143,7 @@ func (r *JSONReporter) buildReport(
 		GeneratedAt:   time.Now().UTC(),
 		Tool: ToolInfo{
 			Name:    "solsec",
-			Version: "0.1.0",
+			Version: "0.2.0",
 		},
 		Summary: JSONSummary{
 			TotalFiles:    stats.TotalFiles,

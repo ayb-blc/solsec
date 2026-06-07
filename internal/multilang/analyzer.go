@@ -62,12 +62,12 @@ func (a *Analyzer) ScanDirectory(dir string) ([]analyzer.AnalysisResult, error) 
 			if err != nil {
 				return err
 			}
-			if filepath.Clean(abs) != root && (name == "node_modules" || strings.HasPrefix(name, ".")) {
+			if filepath.Clean(abs) != root && shouldSkipDefaultContractPath(path, name) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if isSupportedContractPath(path) {
+		if isSupportedContractPath(path) && !shouldSkipDefaultContractPath(path, filepath.Base(path)) {
 			files = append(files, path)
 		}
 		return nil
@@ -77,6 +77,27 @@ func (a *Analyzer) ScanDirectory(dir string) ([]analyzer.AnalysisResult, error) 
 	}
 
 	return a.ScanFiles(files)
+}
+
+func shouldSkipDefaultContractPath(path, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	normalized := filepath.ToSlash(path)
+	lowerName := strings.ToLower(name)
+	lowerPath := strings.ToLower(normalized)
+
+	if lowerName == "node_modules" || lowerName == "lib" || lowerName == "vendor" ||
+		lowerName == "out" || lowerName == "artifacts" || lowerName == "cache" ||
+		lowerName == "mock" || lowerName == "mocks" {
+		return true
+	}
+	if strings.Contains(lowerPath, "/mock/") || strings.Contains(lowerPath, "/mocks/") ||
+		strings.Contains(lowerPath, "/test/") || strings.Contains(lowerPath, "/tests/") {
+		return true
+	}
+	return strings.HasSuffix(lowerName, "_test.sol") ||
+		strings.HasSuffix(lowerName, ".t.sol")
 }
 
 func (a *Analyzer) ScanFiles(files []string) ([]analyzer.AnalysisResult, error) {

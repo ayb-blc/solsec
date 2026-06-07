@@ -57,4 +57,11 @@ const (
 	// --- Shadowing ---
 	IDShadowing001 RuleID = "SOLSEC-SHADOW-001" // State variable shadowed by local
 	IDShadowing002 RuleID = "SOLSEC-SHADOW-002" // State variable shadowed by parameter
+
+	// --- Initialization ---
+	IDInit001 RuleID = "SOLSEC-INIT-001" // Reinitializable initializer
+	IDInit002 RuleID = "SOLSEC-INIT-002" // Constructor in upgradeable
+	IDInit003 RuleID = "SOLSEC-INIT-003" // Missing storage gap in upgradeable contract
+	IDInit004 RuleID = "SOLSEC-INIT-004" // Uninitialized Ownable
+	IDInit005 RuleID = "SOLSEC-INIT-005" // Override removes restriction
 )

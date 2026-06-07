@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img alt="Status" src="https://img.shields.io/badge/status-v0.1.0--beta-0f6fff?style=for-the-badge" />
+  <img alt="Status" src="https://img.shields.io/badge/status-v0.2.0--beta-0f6fff?style=for-the-badge" />
   <img alt="Language" src="https://img.shields.io/badge/Go-static%20analysis-00ADD8?style=for-the-badge&logo=go&logoColor=white" />
   <img alt="Target" src="https://img.shields.io/badge/Solidity-security%20scanner-363636?style=for-the-badge&logo=solidity&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" />

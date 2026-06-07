@@ -7,10 +7,7 @@ import (
 	"github.com/ayb-blc/solsec/internal/symboltable"
 )
 
-// uint256 public owner = msg.sender;  // state variable
-//
-// function setOwner(address owner) external {  // parameter shadows state!
-// }
+// ShadowingDetector detects local variables or parameters that shadow state variables.
 type ShadowingDetector struct{}
 
 func NewShadowingDetector() *ShadowingDetector {
