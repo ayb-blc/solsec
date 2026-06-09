@@ -13,6 +13,8 @@ func DefaultDetectors() []analyzer.Detector {
 		NewReinitializableInitDetector(),
 		NewConstructorInUpgradeableDetector(),
 		NewUninitializedOwnableDetector(),
+		NewFlashLoanDetector(),
+		NewSignatureReplayDetector(),
 	}
 }
 

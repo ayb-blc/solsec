@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/trace"
 )
 
 // solsec scan . --format json | jq '.findings[] | select(.severity == "CRITICAL")'
@@ -47,18 +48,19 @@ type JSONSummary struct {
 
 // JSONFinding is the JSON representation of one finding.
 type JSONFinding struct {
-	ID             string   `json:"id"`
-	RuleID         string   `json:"rule_id,omitempty"`
-	DetectorName   string   `json:"detector"`
-	Title          string   `json:"title"`
-	Description    string   `json:"description"`
-	Recommendation string   `json:"recommendation,omitempty"`
-	Filepath       string   `json:"file"`
-	Line           int      `json:"line"`
-	CodeSnippet    string   `json:"code_snippet,omitempty"`
-	Severity       string   `json:"severity"`
-	Confidence     string   `json:"confidence"`
-	Tags           []string `json:"tags,omitempty"`
+	ID             string           `json:"id"`
+	RuleID         string           `json:"rule_id,omitempty"`
+	DetectorName   string           `json:"detector"`
+	Title          string           `json:"title"`
+	Description    string           `json:"description"`
+	Recommendation string           `json:"recommendation,omitempty"`
+	Filepath       string           `json:"file"`
+	Line           int              `json:"line"`
+	CodeSnippet    string           `json:"code_snippet,omitempty"`
+	Severity       string           `json:"severity"`
+	Confidence     string           `json:"confidence"`
+	Tags           []string         `json:"tags,omitempty"`
+	Trace          *trace.JSONTrace `json:"trace,omitempty"`
 }
 
 type FileFindings struct {
@@ -97,9 +99,8 @@ func (r *JSONReporter) buildReport(
 	stats SummaryStats,
 ) JSONReport {
 
-	// Flat finding listesi
-	var allFindings []JSONFinding
-	var byFile []FileFindings
+	allFindings := make([]JSONFinding, 0)
+	byFile := make([]FileFindings, 0)
 	var errors []AnalysisError
 
 	for _, result := range results {
@@ -161,7 +162,7 @@ func (r *JSONReporter) buildReport(
 
 func toJSONFinding(f analyzer.Finding) JSONFinding {
 	enrichFinding(&f)
-	return JSONFinding{
+	jf := JSONFinding{
 		ID:             findingID(f),
 		RuleID:         effectiveRuleID(f),
 		DetectorName:   f.DetectorName,
@@ -175,6 +176,10 @@ func toJSONFinding(f analyzer.Finding) JSONFinding {
 		Confidence:     f.Confidence.String(),
 		Tags:           f.Tags,
 	}
+	if f.Trace != nil {
+		jf.Trace = trace.ToJSON(f.Trace)
+	}
+	return jf
 }
 
 func findingID(f analyzer.Finding) string {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/trace"
 )
 
 // SARIF (Static Analysis Results Interchange Format) nedir?
@@ -68,11 +69,12 @@ type sarifRuleProperties struct {
 }
 
 type sarifResult struct {
-	RuleID              string            `json:"ruleId"`
-	Level               string            `json:"level"` // error, warning, note
-	Message             sarifMessage      `json:"message"`
-	Locations           []sarifLocation   `json:"locations"`
-	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
+	RuleID              string                `json:"ruleId"`
+	Level               string                `json:"level"` // error, warning, note
+	Message             sarifMessage          `json:"message"`
+	Locations           []sarifLocation       `json:"locations"`
+	PartialFingerprints map[string]string     `json:"partialFingerprints,omitempty"`
+	CodeFlows           []trace.SARIFCodeFlow `json:"codeFlows,omitempty"`
 }
 
 type sarifMessage struct {
@@ -149,6 +151,9 @@ func (r *SARIFReporter) Report(results []analyzer.AnalysisResult) error {
 				PartialFingerprints: map[string]string{
 					"primaryLocationLineHash": findingID(f),
 				},
+			}
+			if cf := trace.ToSARIFCodeFlow(f.Trace); cf != nil {
+				sr.CodeFlows = []trace.SARIFCodeFlow{*cf}
 			}
 			sarifResults = append(sarifResults, sr)
 		}

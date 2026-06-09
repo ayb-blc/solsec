@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ayb-blc/solsec/internal/inheritancegraph"
 	"github.com/ayb-blc/solsec/internal/rules"
 )
 
@@ -18,10 +19,23 @@ type Detector interface {
 	Analyze(lines []string, source, filepath string) ([]Finding, error)
 }
 
+// GraphAwareDetector is implemented by detectors that can use project-level
+// context such as inheritance, modifiers, function signatures, and state ops.
+// Detectors that do not implement it continue to use the legacy Analyze path.
+type GraphAwareDetector interface {
+	AnalyzeWithGraph(
+		lines []string,
+		source string,
+		filepath string,
+		graph *inheritancegraph.Graph,
+	) ([]Finding, error)
+}
+
 // Analyzer orchestrates file scanning and detector execution.
 type Analyzer struct {
-	detectors []Detector
-	config    Config
+	detectors        []Detector
+	config           Config
+	inheritanceGraph *inheritancegraph.Graph
 }
 
 type Config struct {
@@ -35,11 +49,64 @@ type Config struct {
 	OnlyDetectors []string
 }
 
+// RunConfig describes a project-level analysis run.
+type RunConfig struct {
+	RootDir         string
+	ExcludePatterns []string
+	Workers         int
+	MinSeverity     Severity
+	Experimental    bool
+}
+
+// Report is the project-level result returned by Run.
+type Report struct {
+	Results  []AnalysisResult
+	Findings []Finding
+	Graph    *inheritancegraph.Graph
+}
+
 func New(detectors []Detector, config Config) *Analyzer {
 	return &Analyzer{
 		detectors: detectors,
 		config:    config,
 	}
+}
+
+// Run scans a project directory after building project-level context.
+func (a *Analyzer) Run(cfg RunConfig) (*Report, error) {
+	if cfg.RootDir == "" {
+		cfg.RootDir = "."
+	}
+	if cfg.Workers > 0 {
+		a.config.Workers = cfg.Workers
+	}
+	a.config.MinSeverity = cfg.MinSeverity
+
+	files, root, err := a.collectSolFiles(cfg.RootDir, cfg.ExcludePatterns)
+	if err != nil {
+		return nil, err
+	}
+	a.buildInheritanceGraph(root, files)
+
+	results, err := a.ScanFiles(files)
+	if err != nil {
+		return nil, err
+	}
+
+	findings := flattenFindings(results)
+	return &Report{
+		Results:  results,
+		Findings: findings,
+		Graph:    a.InheritanceGraph(),
+	}, nil
+}
+
+// InheritanceGraph returns the project graph built for the latest directory run.
+func (a *Analyzer) InheritanceGraph() *inheritancegraph.Graph {
+	if a.inheritanceGraph == nil {
+		return inheritancegraph.NewGraph()
+	}
+	return a.inheritanceGraph
 }
 
 // AnalysisResult contains the findings produced for one file.
@@ -51,40 +118,12 @@ type AnalysisResult struct {
 
 // ScanDirectory scans all Solidity files under dir.
 func (a *Analyzer) ScanDirectory(dir string) ([]AnalysisResult, error) {
-	var files []string
-	root, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-	root = filepath.Clean(root)
-	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			abs, err := filepath.Abs(path)
-			if err != nil {
-				return err
-			}
-			if filepath.Clean(abs) != root && shouldSkipDefaultPath(path, d.Name()) {
-				return filepath.SkipDir
-			}
-		}
-		if !d.IsDir() && strings.HasSuffix(path, ".sol") {
-			if shouldSkipDefaultPath(path, filepath.Base(path)) {
-				return nil
-			}
-			if a.isIgnored(path, root) {
-				return nil
-			}
-			files = append(files, path)
-		}
-		return nil
-	})
+	files, root, err := a.collectSolFiles(dir, nil)
 	if err != nil {
 		return nil, fmt.Errorf("directory walk failed: %w", err)
 	}
 
+	a.buildInheritanceGraph(root, files)
 	return a.ScanFiles(files)
 }
 
@@ -135,6 +174,11 @@ func (a *Analyzer) AnalyzeFile(filePath string) AnalysisResult {
 		return AnalysisResult{Filepath: filePath, Error: fmt.Errorf("read error: %w", err)}
 	}
 
+	if a.inheritanceGraph == nil {
+		root := filepath.Dir(filePath)
+		a.buildInheritanceGraph(root, []string{filePath})
+	}
+
 	source := string(content)
 	lines := strings.Split(source, "\n")
 
@@ -145,7 +189,18 @@ func (a *Analyzer) AnalyzeFile(filePath string) AnalysisResult {
 			continue
 		}
 
-		detectorFindings, err := detector.Analyze(lines, source, filePath)
+		var detectorFindings []Finding
+		var err error
+		if graphDetector, ok := detector.(GraphAwareDetector); ok {
+			detectorFindings, err = graphDetector.AnalyzeWithGraph(
+				lines,
+				source,
+				filePath,
+				a.InheritanceGraph(),
+			)
+		} else {
+			detectorFindings, err = detector.Analyze(lines, source, filePath)
+		}
 		if err != nil {
 			continue
 		}
@@ -162,6 +217,96 @@ func (a *Analyzer) AnalyzeFile(filePath string) AnalysisResult {
 		Filepath: filePath,
 		Findings: findings,
 	}
+}
+
+func (a *Analyzer) collectSolFiles(dir string, excludePatterns []string) ([]string, string, error) {
+	var files []string
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	root = filepath.Clean(root)
+
+	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			abs, err := filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+			if filepath.Clean(abs) != root && shouldSkipDefaultPath(path, d.Name()) {
+				return filepath.SkipDir
+			}
+			if filepath.Clean(abs) != root && matchesAnyExclude(path, root, excludePatterns) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".sol") {
+			return nil
+		}
+		if shouldSkipDefaultPath(path, filepath.Base(path)) {
+			return nil
+		}
+		if a.isIgnored(path, root) || matchesAnyExclude(path, root, excludePatterns) {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	return files, root, err
+}
+
+func (a *Analyzer) buildInheritanceGraph(root string, files []string) {
+	builder := inheritancegraph.NewBuilder(root)
+	graph, err := builder.BuildFromFiles(files)
+	if err != nil {
+		graph = inheritancegraph.NewGraph()
+	}
+	a.inheritanceGraph = graph
+}
+
+func flattenFindings(results []AnalysisResult) []Finding {
+	var findings []Finding
+	for _, result := range results {
+		findings = append(findings, result.Findings...)
+	}
+	return findings
+}
+
+func matchesAnyExclude(path, root string, patterns []string) bool {
+	if len(patterns) == 0 {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	if err == nil {
+		path = abs
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		rel = path
+	}
+	rel = filepath.ToSlash(rel)
+	base := filepath.Base(path)
+
+	for _, pattern := range patterns {
+		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
+		if globMatch(pattern, rel) || globMatch(pattern, base) {
+			return true
+		}
+		if strings.HasSuffix(pattern, "/**") {
+			prefix := strings.TrimSuffix(pattern, "/**")
+			if rel == prefix || strings.HasPrefix(rel, prefix+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func normalizeRuleID(f *Finding) {

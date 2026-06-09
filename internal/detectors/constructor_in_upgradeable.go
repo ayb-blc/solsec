@@ -104,6 +104,10 @@ func (d *ConstructorInUpgradeableDetector) Analyze(
 	filepath string,
 ) ([]analyzer.Finding, error) {
 
+	if isKnownProxyShell(source, filepath) {
+		return nil, nil
+	}
+
 	if !d.isUpgradeable(source) {
 		return nil, nil
 	}
@@ -130,6 +134,26 @@ func (d *ConstructorInUpgradeableDetector) Analyze(
 	}
 
 	return findings, nil
+}
+
+func isKnownProxyShell(source string, filepath string) bool {
+	proxyNames := []*regexp.Regexp{
+		regexp.MustCompile(`\bcontract\s+TransparentUpgradeableProxy\b`),
+		regexp.MustCompile(`\bcontract\s+ERC1967Proxy\b`),
+		regexp.MustCompile(`\bcontract\s+BeaconProxy\b`),
+		regexp.MustCompile(`\bcontract\s+UpgradeableBeacon\b`),
+		regexp.MustCompile(`\bcontract\s+ProxyAdmin\b`),
+	}
+	for _, p := range proxyNames {
+		if p.MatchString(source) {
+			return true
+		}
+	}
+
+	normalized := strings.ToLower(filepath)
+	return strings.Contains(normalized, "/proxy/transparent/") ||
+		strings.Contains(normalized, "/proxy/erc1967/") ||
+		strings.Contains(normalized, "/proxy/beacon/")
 }
 
 func (d *ConstructorInUpgradeableDetector) isUpgradeable(source string) bool {

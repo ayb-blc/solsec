@@ -64,4 +64,10 @@ const (
 	IDInit003 RuleID = "SOLSEC-INIT-003" // Missing storage gap in upgradeable contract
 	IDInit004 RuleID = "SOLSEC-INIT-004" // Uninitialized Ownable
 	IDInit005 RuleID = "SOLSEC-INIT-005" // Override removes restriction
+
+	// Flash loan callback detector.
+	IDDefi001 RuleID = "SOLSEC-DEFI-001" // Flash loan provider missing guard
+	IDDefi002 RuleID = "SOLSEC-DEFI-002" // Flash loan callback missing caller check
+	IDDefi003 RuleID = "SOLSEC-DEFI-003" // Signature replay
+
 )

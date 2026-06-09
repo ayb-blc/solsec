@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/trace"
 )
 
 const (
@@ -166,6 +167,10 @@ func (r *TextReporter) printFinding(num int, fw findingWithFile) {
 			colorGreen, colorReset,
 			wrapText(f.Recommendation, 70, "        "),
 		)
+	}
+
+	if f.Trace != nil && !f.Trace.IsEmpty() {
+		r.printf("\n%s", trace.RenderText(f.Trace, r.useColor))
 	}
 
 	if len(f.Tags) > 0 {

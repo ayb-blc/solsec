@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/inheritancegraph"
 	"github.com/ayb-blc/solsec/internal/rules"
 )
 
@@ -105,6 +106,68 @@ func (d *OverrideRemovesRestrictionDetector) Analyze(
 				}
 			}
 		}
+	}
+
+	return findings, nil
+}
+
+// AnalyzeWithIndex analyzes override regressions using project-level override
+// tracking. It supports cross-file inheritance and body-aware modifier
+// resolution.
+func (d *OverrideRemovesRestrictionDetector) AnalyzeWithIndex(
+	filepath string,
+	idx *inheritancegraph.ProjectOverrideIndex,
+	graph *inheritancegraph.Graph,
+) ([]analyzer.Finding, error) {
+	if idx == nil || graph == nil {
+		return nil, nil
+	}
+
+	var findings []analyzer.Finding
+	for _, report := range idx.FindAllRegressions() {
+		if report.RegressionLink == nil ||
+			report.RegressionLink.Contract == nil ||
+			report.RegressionLink.Function == nil ||
+			report.DroppedDef == nil {
+			continue
+		}
+		if report.RegressionLink.Contract.Filepath != filepath {
+			continue
+		}
+
+		severity := analyzer.High
+		if overrideFunctionWritesState(report.RegressionLink.Function.BodyLines) {
+			severity = analyzer.Critical
+		}
+
+		rootLink := report.Chain.Root()
+		if rootLink == nil || rootLink.Contract == nil {
+			continue
+		}
+
+		fn := report.RegressionLink.Function
+		contract := report.RegressionLink.Contract
+		finding := detectorFinding(rules.IDInit005, filepath, fn.LineNumber, strings.TrimSpace(fn.Signature))
+		finding.Title = fmt.Sprintf(
+			"Override '%s.%s' drops '%s' from '%s'",
+			contract.Name,
+			report.Chain.FunctionName,
+			report.DroppedDef.Name,
+			rootLink.Contract.Name,
+		)
+		finding.Description = fmt.Sprintf(
+			"Function '%s' was first defined in '%s' with access control modifier '%s'.\n\n"+
+				"The override in '%s' drops this modifier. Override chain depth: %d.",
+			report.Chain.FunctionName,
+			rootLink.Contract.Name,
+			report.DroppedDef.Name,
+			contract.Name,
+			report.Chain.Depth(),
+		)
+		finding.Severity = severity
+		finding.Confidence = analyzer.ConfidenceHigh
+		finding.Tags = appendUniqueStrings(finding.Tags, "override", "inheritance", "access-control", "project-context")
+		findings = append(findings, finding)
 	}
 
 	return findings, nil

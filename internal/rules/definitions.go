@@ -335,6 +335,181 @@ contract Child is Base {
 			Enabled: false,
 		},
 
+		{
+			ID:               IDDefi001,
+			Name:             "Flash Loan Provider Missing Reentrancy Guard",
+			ShortDescription: "flashLoan() writes state around a user-controlled callback without reentrancy protection.",
+			FullDescription: `A flash loan function calls back into a user-provided address
+(e.g. receiver.onFlashLoan()) and modifies protocol state before or
+after the callback, without a reentrancy guard.
+
+During the callback window, the protocol's internal state is
+inconsistent: partial accounting has been applied but the loan
+has not yet been repaid. An attacker's callback can exploit this
+window to interact with other protocol functions.
+
+Known exploits using this pattern:
+  - Euler Finance  (2022, $197M) - donateToReserves during callback
+  - Cream Finance  (2021, $130M) - compound callback reentrancy
+  - DODO DEX       (2021,  $3.8M) - callback into pool
+
+Severity:
+  CRITICAL - state variable written before or after callback
+  HIGH     - callback to user-controlled address, no guard, no state writes`,
+			Severity:     SeverityCritical,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryReentrancy,
+			Language:     LanguageSolidity,
+			DetectorName: "flash-loan",
+			Tags:         []string{"flash-loan", "reentrancy", "callback", "defi"},
+			Remediation: `Add nonReentrant to the flash loan function:
+
+  function flashLoan(
+      IERC3156FlashBorrower receiver,
+      address token,
+      uint256 amount,
+      bytes calldata data
+  ) external nonReentrant returns (bool) { ... }
+
+If a custom guard is used, ensure it covers the full callback window.
+Apply CEI: update all accounting BEFORE the callback, then verify
+repayment AFTER.`,
+			References: RuleReferences{
+				CWE: []string{"CWE-841"},
+				URLs: []string{
+					"https://eips.ethereum.org/EIPS/eip-3156",
+					"https://blog.euler.finance/euler-attack-march-2023",
+					"https://github.com/crytic/not-so-smart-contracts/tree/master/reentrancy",
+				},
+			},
+			Examples: RuleExamples{
+				Vulnerable: `function flashLoan(address receiver, uint256 amount) external {
+    _totalBorrowed += amount;         // state write BEFORE callback
+    token.transfer(receiver, amount);
+    IFlashBorrower(receiver).onFlashLoan(amount, data); // callback
+    _totalBorrowed -= amount;         // state write AFTER callback
+    require(token.balanceOf(address(this)) >= _required);
+}`,
+				Safe: `function flashLoan(address receiver, uint256 amount)
+    external nonReentrant {
+    uint256 balanceBefore = token.balanceOf(address(this));
+    token.transfer(receiver, amount);
+    IFlashBorrower(receiver).onFlashLoan(amount, data);
+    require(token.balanceOf(address(this)) >= balanceBefore + fee);
+}`,
+			},
+			Enabled: true,
+		},
+
+		{
+			ID:               IDDefi002,
+			Name:             "Flash Loan Callback Missing Caller Verification",
+			ShortDescription: "onFlashLoan() / executeOperation() does not verify msg.sender is a trusted lender.",
+			FullDescription: `A flash loan callback function (onFlashLoan, executeOperation,
+uniswapV2Call, etc.) does not verify that the caller is a trusted
+lending contract. Anyone can call this function directly with crafted
+parameters, executing the callback logic outside of a legitimate
+flash loan.
+
+If the callback performs token approvals, transfers, or other
+privileged operations based on the parameters, an attacker can
+trigger those operations without providing any capital.
+
+Per EIP-3156, receivers MUST verify:
+  1. msg.sender is the trusted lender
+  2. initiator is the expected initiator (usually address(this))`,
+			Severity:     SeverityHigh,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryAuthentication,
+			Language:     LanguageSolidity,
+			DetectorName: "flash-loan",
+			Tags:         []string{"flash-loan", "authentication", "callback", "eip-3156"},
+			Remediation: `Verify the caller before executing callback logic:
+
+  function onFlashLoan(
+      address initiator,
+      address token,
+      uint256 amount,
+      uint256 fee,
+      bytes calldata data
+  ) external returns (bytes32) {
+      // EIP-3156: verify caller is the trusted lender
+      require(msg.sender == address(lender), "untrusted lender");
+      require(initiator == address(this), "untrusted initiator");
+      ...
+      return keccak256("ERC3156FlashBorrower.onFlashLoan");
+  }`,
+			References: RuleReferences{
+				SWC:  []string{"SWC-115"},
+				URLs: []string{"https://eips.ethereum.org/EIPS/eip-3156#receiver-specification"},
+			},
+			Enabled: true,
+		},
+
+		{
+			ID:               IDDefi003,
+			Name:             "Signature Replay Vulnerability",
+			ShortDescription: "ecrecover() used without nonce or chainId; signatures can be replayed.",
+			FullDescription: `Functions using ecrecover() must include protective elements in the
+signed message to prevent replay attacks:
+
+  Nonce    - prevents replaying the same signature twice on the same chain
+  ChainId  - prevents replaying a signature from one chain on another
+  Deadline - limits the time window during which a signature is valid
+
+Missing any of these opens the protocol to different replay attack vectors.
+If EIP-712 is used correctly (DOMAIN_SEPARATOR or _hashTypedDataV4),
+chainId is automatically included in the domain.
+
+Known exploits:
+  - Poly Network (2021, $600M) - signature replay across chains
+  - Furucombo (2021,  $14M) - replayed approve signature
+  - Cover Protocol (2020,  $4M) - minting via replayed signatures
+
+Severity:
+  CRITICAL - no nonce and no chainId
+  HIGH     - no nonce (same-chain replay trivially possible)
+  MEDIUM   - no chainId (cross-chain replay possible)
+  LOW      - no deadline (signature never expires, informational)`,
+			Severity:     SeverityHigh,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryAuthentication,
+			Language:     LanguageSolidity,
+			DetectorName: "signature-replay",
+			Tags:         []string{"signature", "replay", "ecrecover", "eip-712", "permit"},
+			Remediation: `Include nonce, chainId, and deadline in the signed message.
+The simplest approach is to use EIP-712 with OpenZeppelin:
+
+  import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+  import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+  import "@openzeppelin/contracts/utils/Nonces.sol";
+
+  contract MyContract is EIP712, Nonces {
+      bytes32 private constant PERMIT_TYPEHASH = keccak256(
+          "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+      );
+
+      function permit(address owner, address spender, uint256 value,
+                      uint256 deadline, uint8 v, bytes32 r, bytes32 s) external {
+          require(block.timestamp <= deadline, "expired");
+          bytes32 structHash = keccak256(
+              abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline)
+          );
+          address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
+          require(signer == owner, "invalid signature");
+      }
+  }`,
+			References: RuleReferences{
+				URLs: []string{
+					"https://eips.ethereum.org/EIPS/eip-712",
+					"https://eips.ethereum.org/EIPS/eip-2612",
+					"https://swcregistry.io/docs/SWC-121",
+				},
+				SWC: []string{"SWC-121"},
+				CWE: []string{"CWE-294"},
+			},
+			Enabled: true,
+		},
 		rule(IDIntegerOverflow001, "Integer overflow or underflow", SeverityHigh, ConfidenceMedium, CategoryArithmetic, "integer-overflow",
 			"Arithmetic in old Solidity versions may overflow or underflow.",
 			"Use Solidity 0.8+ checked arithmetic or audited SafeMath for older compilers.",

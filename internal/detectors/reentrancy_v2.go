@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/inheritancegraph"
 	"github.com/ayb-blc/solsec/internal/rules"
+	"github.com/ayb-blc/solsec/internal/trace"
 )
 
 type ReentrancyDetectorV2 struct {
@@ -48,6 +50,141 @@ func (d *ReentrancyDetectorV2) Analyze(lines []string, source, filepath string) 
 		}
 	}
 	return findings, nil
+}
+
+// AnalyzeWithGraph uses project context and ordered state operations when
+// available. If graph parsing cannot provide usable context, it falls back to
+// the legacy single-file detector so coverage is preserved.
+func (d *ReentrancyDetectorV2) AnalyzeWithGraph(
+	lines []string,
+	source string,
+	filepath string,
+	graph *inheritancegraph.Graph,
+) ([]analyzer.Finding, error) {
+	if graph == nil || graph.Size() == 0 {
+		return d.Analyze(lines, source, filepath)
+	}
+
+	contracts := graph.ContractsInFile(filepath)
+	if len(contracts) == 0 {
+		return d.Analyze(lines, source, filepath)
+	}
+
+	tracker := inheritancegraph.NewStateTracker(graph)
+	var findings []analyzer.Finding
+
+	for _, contract := range contracts {
+		for _, fn := range contract.Functions {
+			if fn.Visibility == "internal" || fn.Visibility == "private" {
+				continue
+			}
+			if strings.HasPrefix(fn.Name, "_") {
+				continue
+			}
+			if fn.IsViewOrPure() || d.functionNodeHasGuard(fn, source) {
+				continue
+			}
+
+			stateMap := tracker.Analyze(fn, contract)
+			violations := stateMap.FindCEIViolations()
+			if len(violations) == 0 {
+				continue
+			}
+
+			finding := d.findingFromCEIViolation(fn.Name, filepath, stateMap, violations[0])
+			if finding != nil {
+				findings = append(findings, *finding)
+			}
+		}
+	}
+
+	return findings, nil
+}
+
+// AnalyzeWithTracker analyzes one function using ordered state/call operations
+// from StateTracker. It is stricter than the regex fallback because it reports
+// only real write-after-call CEI violations over known state variables.
+func (d *ReentrancyDetectorV2) AnalyzeWithTracker(
+	fn *fnBlock,
+	contract *inheritancegraph.ContractNode,
+	tracker *inheritancegraph.StateTracker,
+	filepath string,
+) *analyzer.Finding {
+	if fn == nil || contract == nil || tracker == nil {
+		return nil
+	}
+	fnNode := contract.Functions[fn.name]
+	if fnNode == nil {
+		return nil
+	}
+
+	stateMap := tracker.Analyze(fnNode, contract)
+	violations := stateMap.FindCEIViolations()
+	if len(violations) == 0 {
+		return nil
+	}
+
+	violation := violations[0]
+	if violation.ExternalCall == nil || violation.WriteAfter == nil {
+		return nil
+	}
+
+	return d.findingFromCEIViolation(fn.name, filepath, stateMap, violation)
+}
+
+func (d *ReentrancyDetectorV2) findingFromCEIViolation(
+	fnName string,
+	filepath string,
+	stateMap *inheritancegraph.FunctionStateMap,
+	violation inheritancegraph.CEIViolation,
+) *analyzer.Finding {
+	if stateMap == nil || violation.ExternalCall == nil || violation.WriteAfter == nil {
+		return nil
+	}
+
+	finding := detectorFinding(
+		rules.IDReentrancy001,
+		filepath,
+		violation.ExternalCall.LineNum,
+		violation.ExternalCall.Line,
+	)
+	finding.Title = "Reentrancy: state write after external call in '" + fnName + "'"
+	finding.Description = fmt.Sprintf(
+		"External call at line %d precedes state write '%s' at line %d.\n\nCall: %s\nWrite: %s",
+		violation.ExternalCall.LineNum,
+		violation.WriteAfter.VarName,
+		violation.WriteAfter.LineNum,
+		violation.ExternalCall.Line,
+		violation.WriteAfter.Line,
+	)
+	finding.Recommendation = "Move state updates before external calls or protect the function with a shared nonReentrant guard."
+	finding.Severity = analyzer.Critical
+	finding.Confidence = analyzer.ConfidenceHigh
+	finding.Tags = appendUniqueStrings(finding.Tags, "reentrancy", "cei", "state-tracker")
+	finding = finding.WithTrace(trace.FromCEIViolation(stateMap, violation))
+	return &finding
+}
+
+func (d *ReentrancyDetectorV2) functionNodeHasGuard(fn *inheritancegraph.FunctionNode, source string) bool {
+	if fn == nil {
+		return false
+	}
+	_ = source
+	guardRe := regexp.MustCompile(`\b(nonReentrant|lock|locked|noReentrant|mutex)\b`)
+	if guardRe.MatchString(fn.Signature) {
+		return true
+	}
+	for _, modifier := range fn.Modifiers {
+		if guardRe.MatchString(modifier) {
+			return true
+		}
+	}
+	for _, line := range fn.BodyLines {
+		if guardRe.MatchString(line) && strings.Contains(line, "require") {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *ReentrancyDetectorV2) analyzeFunction(

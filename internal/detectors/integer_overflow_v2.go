@@ -69,6 +69,7 @@ var (
 	blockTimestampCastRe    = regexp.MustCompile(`uint\d+\s*\(\s*block\s*\.\s*timestamp`)
 	safeTruncationCommentRe = regexp.MustCompile(`(?i)//.*(?:safe|intentional|truncat|by design|ok to)`)
 	emitStatementRe         = regexp.MustCompile(`^\s*emit\s+\w+\s*\(`)
+	bytesLengthCastRe       = regexp.MustCompile(`(?:u?int)(?:8|16|32)\s*\(\s*bytes\s*\([^)]*\)\s*\.\s*length\s*\)`)
 )
 
 func NewIntegerOverflowDetectorV2() *IntegerOverflowDetectorV2 {
@@ -312,6 +313,7 @@ func (d *IntegerOverflowDetectorV2) analyzeDowncasts(
 			typeMaxCastRe.MatchString(line) ||
 			moduloBoundedCastRe.MatchString(line) ||
 			blockTimestampCastRe.MatchString(line) ||
+			bytesLengthCastRe.MatchString(line) ||
 			safeTruncationCommentRe.MatchString(line) ||
 			hasNearbyArithmeticSafetyComment(lines, i) {
 			continue
