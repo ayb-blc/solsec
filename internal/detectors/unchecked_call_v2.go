@@ -139,6 +139,8 @@ func (d *UncheckedCallDetectorV2) analyzeFunctionCalls(
 			record.varName = m[1]
 		} else if m := d.boolAssignPattern.FindStringSubmatch(line); len(m) > 1 {
 			record.varName = m[1]
+		} else if varName := d.extractMultilineAssignedBool(fn.lines, i); varName != "" {
+			record.varName = varName
 		}
 
 		callRecords = append(callRecords, record)
@@ -170,6 +172,24 @@ func (d *UncheckedCallDetectorV2) analyzeFunctionCalls(
 	}
 
 	return findings
+}
+
+func (d *UncheckedCallDetectorV2) extractMultilineAssignedBool(lines []string, callIdx int) string {
+	start := callIdx - 3
+	if start < 0 {
+		start = 0
+	}
+	context := strings.Join(lines[start:callIdx+1], "\n")
+	if !strings.Contains(context, "=") {
+		return ""
+	}
+	if m := d.tupleAssignPattern.FindStringSubmatch(context); len(m) > 1 {
+		return m[1]
+	}
+	if m := d.boolAssignPattern.FindStringSubmatch(context); len(m) > 1 {
+		return m[1]
+	}
+	return ""
 }
 
 // isVarChecked checks whether a captured call result is validated soon after use.

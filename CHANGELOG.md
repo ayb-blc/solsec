@@ -5,6 +5,102 @@ All notable changes to this project are documented in this file.
 The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses semantic versioning.
 
+## [0.4.0] - 2026-06-18
+
+### Highlights
+
+- Added a new DeFi risk detector set for vault, oracle, and token-approval patterns.
+- Added lightweight path tracking for guard-aware detector precision without full CFG complexity.
+- Added performance benchmarking with baseline save/compare support.
+- Reduced false positives on mature production protocol codebases during local validation.
+
+### Added
+
+#### DeFi Detectors
+
+| Rule ID | Detector | Severity Range |
+| --- | --- | --- |
+| `SOLSEC-DEFI-004` | ERC4626 Inflation Attack | CRITICAL/HIGH |
+| `SOLSEC-DEFI-005` | Oracle Manipulation | CRITICAL/HIGH |
+| `SOLSEC-DEFI-006` | Dangerous Approve / Allowance Pattern | CRITICAL/HIGH/MEDIUM/LOW |
+
+- Added `SOLSEC-DEFI-004` for ERC4626 vault inflation risk, including first-depositor manipulation, donation-based share inflation, asset/share ratio abuse, and missing virtual-share or dead-share protections.
+- Added `SOLSEC-DEFI-005` for oracle manipulation risk, including AMM spot-price dependencies, deprecated Chainlink APIs, missing staleness validation, and missing answer validity checks.
+- Added `SOLSEC-DEFI-006` for dangerous token approvals, including user-controlled spenders, unguarded unlimited approvals, deprecated `safeApprove()` usage, and allowance race-condition patterns.
+
+#### Lightweight Path Tracker
+
+- Added `internal/pathtracker` for lightweight guard and branch context.
+- Added early-guard detection for patterns such as `require(...)`, `if (...) return`, and initialization guards.
+- Added custom mutex recognition for non-standard reentrancy guards.
+- Integrated path-tracker context into reentrancy, access-control, and initialization analysis.
+
+#### Benchmarking
+
+- Added `solsec bench <target>` for local performance profiling.
+- Added detector timing breakdowns, throughput metrics, memory statistics, and slowest-file reporting.
+- Added benchmark baseline save/compare workflow:
+
+  ```bash
+  solsec bench ./contracts --save baseline.json
+  solsec bench ./contracts --compare baseline.json --threshold 15
+  ```
+
+- Added noise-resistant regression detection so small millisecond-level detector fluctuations do not fail CI.
+- Improved benchmark output readability with detector share percentages and compact profile bars.
+
+### Changed
+
+- Oracle analysis now distinguishes L2 sequencer uptime feeds from price feeds.
+- Oracle analysis no longer reports price-staleness or price-validity findings for status-only sequencer feeds.
+- Integer-overflow analysis now recognizes more bounded and intentional arithmetic patterns in optimized math libraries.
+- Reinitializable-initializer analysis now skips Solidity interfaces and library helper functions.
+- Constructor-in-upgradeable analysis now requires real upgradeability context instead of treating every `initialize()` function as an upgradeable-contract signal.
+- Unchecked-call analysis now recognizes multi-line tuple assignment patterns followed by `require(success && ...)`.
+- Benchmark collection now uses the same default path exclusions as normal scans, including test, mock, build artifact, cache, and dependency directories.
+- Benchmark mean profiles now average detector timings across measured runs instead of displaying the last run as representative.
+
+### Fixed
+
+- Fixed false positives on Uniswap V3 interface `initialize()` declarations.
+- Fixed false positives on Uniswap V3 library `initialize()` helper functions.
+- Fixed false positives on non-upgradeable constructors that happened to coexist with an `initialize()` function.
+- Fixed false positives on Uniswap-style safe low-level calls that validate both `success` and return data.
+- Fixed excessive arithmetic noise in known optimized math-library patterns such as `BitMath` and `FullMath`.
+- Fixed benchmark baseline comparison reporting for low-duration detector timings.
+
+### Validation
+
+Local protocol-validation snapshots used during v0.4.0 tuning:
+
+| Target | Files | Default Findings | Notes |
+| --- | ---: | ---: | --- |
+| OpenZeppelin Contracts | 241 | 0 | Mature library validation target. |
+| Aave V3 Core | 102 | 2 | Expected remaining findings: one oracle warning and one low-risk event downcast. |
+| Uniswap V3 Core | 33 | 3 | `0` CRITICAL, `0` HIGH; remaining findings are MEDIUM arithmetic warnings. |
+
+These counts are local validation snapshots and may change with upstream protocol revisions, remappings, or enabled detector sets.
+
+### Performance
+
+- Added repeatable benchmark runs with warmup support.
+- Added per-detector timing and slowest-file visibility for performance tuning.
+- Added baseline comparison suitable for CI regression checks.
+
+Example workflow:
+
+```bash
+solsec bench /path/to/contracts --runs 5 --save baseline.json
+solsec bench /path/to/contracts --runs 5 --compare baseline.json --threshold 15
+```
+
+### Notes
+
+- v0.4.0 focuses on DeFi protocol security and detector precision.
+- Full CFG/path-sensitive analysis remains intentionally deferred.
+- Lightweight path tracking provides practical guard awareness with lower implementation complexity.
+- This release continues building toward richer cross-contract analysis and taint propagation.
+
 ## [0.3.0] - 2026-06-10
 
 ### Added

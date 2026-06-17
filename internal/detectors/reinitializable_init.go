@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/pathtracker"
 	"github.com/ayb-blc/solsec/internal/rules"
 )
 
@@ -29,6 +30,7 @@ func NewReinitializableInitDetector() *ReinitializableInitDetector {
 			regexp.MustCompile(`_disableInitializers\s*\(`),
 			regexp.MustCompile(`_implementation\(\)\s*==\s*address\s*\(\s*0\s*\)`),
 			regexp.MustCompile(`implementation\s*==\s*address\s*\(\s*0\s*\)`),
+			regexp.MustCompile(`require\s*\([^)]*==\s*(?:0|address\s*\(\s*0\s*\))`),
 		},
 	}
 }
@@ -52,6 +54,9 @@ func (d *ReinitializableInitDetector) Analyze(
 
 	for _, fn := range extractFunctions(lines) {
 		if fn.name != "initialize" {
+			continue
+		}
+		if isLineInScopeKind(lines, fn.startLine, "interface", "library") {
 			continue
 		}
 		if fn.visibility != "public" && fn.visibility != "external" && fn.visibility != "" {
@@ -111,6 +116,12 @@ func (d *ReinitializableInitDetector) isProtected(fn *fnBlock) bool {
 			if guard.MatchString(line) {
 				return true
 			}
+		}
+	}
+
+	for _, guard := range pathtracker.New().FindEarlyGuards(functionBodyForPathTracking(fn.lines)) {
+		if guard.Kind == pathtracker.GuardInitialized {
+			return true
 		}
 	}
 

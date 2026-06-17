@@ -7,6 +7,7 @@ import (
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
 	"github.com/ayb-blc/solsec/internal/inheritancegraph"
+	"github.com/ayb-blc/solsec/internal/pathtracker"
 	"github.com/ayb-blc/solsec/internal/rules"
 	"github.com/ayb-blc/solsec/internal/trace"
 )
@@ -40,9 +41,12 @@ func (d *ReentrancyDetectorV2) Analyze(lines []string, source, filepath string) 
 		byName[fn.name] = fn
 	}
 
+	pt := pathtracker.New()
 	var findings []analyzer.Finding
 	for _, fn := range functions {
-		if fn.isPureOrView() || d.hasGuard(fn, source) {
+		if fn.isPureOrView() ||
+			d.hasGuard(fn, source) ||
+			pt.HasReentrancyGuard(functionBodyForPathTracking(fn.lines), source) {
 			continue
 		}
 		if finding, ok := d.analyzeFunction(fn, byName, filepath); ok {
@@ -184,7 +188,7 @@ func (d *ReentrancyDetectorV2) functionNodeHasGuard(fn *inheritancegraph.Functio
 			return true
 		}
 	}
-	return false
+	return pathtracker.New().HasReentrancyGuard(fn.BodyLines, source)
 }
 
 func (d *ReentrancyDetectorV2) analyzeFunction(

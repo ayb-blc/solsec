@@ -60,7 +60,7 @@ var (
 		`(?:require|assert)\s*\(.*==\s*\w+\s*\(`,
 	)
 	bitManipCastRe = regexp.MustCompile(
-		`uint\d+\s*\(\s*\w+\s*(?:>>|<<|&|\|)\s*(?:0x[\da-fA-F]+|\d+)\s*\)`,
+		`u?int\d+\s*\(\s*\w+\s*(?:>>|<<|&|\|)\s*(?:0x[\da-fA-F]+|\d+)\s*\)`,
 	)
 	typeMaxCastRe       = regexp.MustCompile(`(?:u?int)\d+\s*\(\s*type\s*\(\s*[A-Z]\w*\s*\)\.max\s*\)`)
 	moduloBoundedCastRe = regexp.MustCompile(
@@ -131,6 +131,9 @@ func (d *IntegerOverflowDetectorV2) analyzePreV8(
 	if hasSafeMath {
 		return nil
 	}
+	if isKnownOptimizedMathLibrary(source, filepath) {
+		return nil
+	}
 
 	var findings []analyzer.Finding
 	for i, line := range lines {
@@ -138,6 +141,9 @@ func (d *IntegerOverflowDetectorV2) analyzePreV8(
 
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		if hasNearbyArithmeticSafetyComment(lines, i) {
 			continue
 		}
 
@@ -332,6 +338,9 @@ func (d *IntegerOverflowDetectorV2) analyzeDowncasts(
 		}
 
 		if regexp.MustCompile(`^\d+$`).MatchString(sourceVar) {
+			continue
+		}
+		if isSignGuardedIntToUintCast(lines, i, sourceVar, targetType) {
 			continue
 		}
 		funcCtx := d.getEnclosingFunction(lines, i)
@@ -558,6 +567,8 @@ func hasNearbyArithmeticSafetyComment(lines []string, lineIdx int) bool {
 			strings.Contains(lower, "underflow impossible") ||
 			strings.Contains(lower, "safe from underflow") ||
 			strings.Contains(lower, "safe from overflow") ||
+			strings.Contains(lower, "overflow is acceptable") ||
+			strings.Contains(lower, "underflow is acceptable") ||
 			strings.Contains(lower, "bounded by") ||
 			strings.Contains(lower, "bounded to") ||
 			(strings.Contains(lower, "<=") && strings.HasPrefix(strings.TrimSpace(lower), "//")) {
@@ -565,6 +576,34 @@ func hasNearbyArithmeticSafetyComment(lines []string, lineIdx int) bool {
 		}
 	}
 	return false
+}
+
+func isKnownOptimizedMathLibrary(source, filepath string) bool {
+	lowerPath := strings.ToLower(filepath)
+	if strings.Contains(lowerPath, "/bitmath.sol") ||
+		strings.Contains(lowerPath, "/fullmath.sol") {
+		return true
+	}
+	return regexp.MustCompile(`\blibrary\s+(?:BitMath|FullMath)\b`).MatchString(source)
+}
+
+func isSignGuardedIntToUintCast(lines []string, lineIdx int, sourceVar string, targetType string) bool {
+	if !strings.HasPrefix(targetType, "uint") {
+		return false
+	}
+
+	start := lineIdx - 3
+	if start < 0 {
+		start = 0
+	}
+	end := lineIdx + 2
+	if end > len(lines) {
+		end = len(lines)
+	}
+	context := strings.Join(lines[start:end], "\n")
+	source := regexp.QuoteMeta(sourceVar)
+	return regexp.MustCompile(`\b`+source+`\b\s*<\s*0`).MatchString(context) &&
+		regexp.MustCompile(`uint\d+\s*\(\s*-?\s*`+source+`\b`).MatchString(context)
 }
 
 func isBytesNToUintCast(line string, targetType string) bool {

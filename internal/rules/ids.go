@@ -70,4 +70,7 @@ const (
 	IDDefi002 RuleID = "SOLSEC-DEFI-002" // Flash loan callback missing caller check
 	IDDefi003 RuleID = "SOLSEC-DEFI-003" // Signature replay
 
+	IDDefi004 RuleID = "SOLSEC-DEFI-004" // ERC4626 inflation attack
+	IDDefi005 RuleID = "SOLSEC-DEFI-005" // Oracle manipulation
+	IDDefi006 RuleID = "SOLSEC-DEFI-006" // Dangerous approve
 )

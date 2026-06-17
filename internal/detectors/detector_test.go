@@ -229,6 +229,25 @@ contract T {
 	}
 }
 
+func TestUncheckedCallV2_MultilineTupleRequirePattern(t *testing.T) {
+	source := `
+pragma solidity ^0.8.0;
+contract T {
+    function balance(address token) private view returns (uint256) {
+        (bool success, bytes memory data) =
+            token.staticcall(abi.encodeWithSelector(bytes4(0x70a08231), address(this)));
+        require(success && data.length >= 32);
+        return abi.decode(data, (uint256));
+    }
+}`
+	d := detectors.NewUncheckedCallDetectorV2()
+	findings := mustAnalyze(t, d, source)
+
+	if len(findings) != 0 {
+		t.Errorf("multiline tuple assignment with require(success) is safe, got %d findings", len(findings))
+	}
+}
+
 // --- Version Awareness Tests ---
 
 func TestParseVersion_Caret(t *testing.T) {
@@ -309,6 +328,25 @@ contract T {
 	}
 }
 
+func TestOverflowV2_KnownOptimizedMathLibrary_NoFinding(t *testing.T) {
+	source := `
+pragma solidity >=0.5.0 <0.8.0;
+library FullMath {
+    function mulDiv(uint256 denominator) internal pure returns (uint256 result) {
+        uint256 inv = (3 * denominator) ^ 2;
+        inv *= 2 - denominator * inv; // inverse mod 2**8
+        inv *= 2 - denominator * inv; // inverse mod 2**16
+        return inv;
+    }
+}`
+	d := detectors.NewIntegerOverflowDetectorV2()
+	findings := mustAnalyze(t, d, source)
+
+	if len(findings) != 0 {
+		t.Errorf("known optimized math library should not trigger, got %d", len(findings))
+	}
+}
+
 func TestOverflowV2_Post08NoUnchecked(t *testing.T) {
 	source := `
 pragma solidity ^0.8.0;
@@ -358,6 +396,27 @@ contract T {
 
 	if len(findings) == 0 {
 		t.Fatal("uint8(x) downcast should trigger")
+	}
+}
+
+func TestOverflowV2_SignGuardedUint128Cast_NoFinding(t *testing.T) {
+	source := `
+pragma solidity ^0.8.0;
+contract T {
+    function delta(int128 liquidity) external pure returns (int256 amount0) {
+        return liquidity < 0
+            ? -getAmount0Delta(uint128(-liquidity))
+            : getAmount0Delta(uint128(liquidity));
+    }
+    function getAmount0Delta(uint128 liquidity) internal pure returns (int256) {
+        return int256(uint256(liquidity));
+    }
+}`
+	d := detectors.NewIntegerOverflowDetectorV2()
+	findings := mustAnalyze(t, d, source)
+
+	if len(findings) != 0 {
+		t.Errorf("sign-guarded uint128 cast should not trigger, got %d", len(findings))
 	}
 }
 

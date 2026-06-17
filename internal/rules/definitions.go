@@ -499,6 +499,7 @@ The simplest approach is to use EIP-712 with OpenZeppelin:
           require(signer == owner, "invalid signature");
       }
   }`,
+
 			References: RuleReferences{
 				URLs: []string{
 					"https://eips.ethereum.org/EIPS/eip-712",
@@ -507,6 +508,238 @@ The simplest approach is to use EIP-712 with OpenZeppelin:
 				},
 				SWC: []string{"SWC-121"},
 				CWE: []string{"CWE-294"},
+			},
+			Enabled: true,
+		},
+
+		{
+			ID:               IDDefi004,
+			Name:             "ERC4626 Inflation Attack",
+			ShortDescription: "ERC4626 vault missing share inflation protection — first depositor can steal funds.",
+			FullDescription: `ERC4626 tokenized vaults are vulnerable to an inflation attack when
+share price can be manipulated before other depositors arrive:
+
+  1. Attacker deposits 1 wei → receives 1 share
+  2. Attacker directly transfers large amount to vault (bypassing deposit())
+     totalAssets becomes huge, totalSupply stays 1
+  3. Victim deposits X tokens:
+     shares = X * totalSupply / totalAssets ≈ 0 (rounds down!)
+  4. Victim receives 0 shares, loses their tokens
+  5. Attacker redeems 1 share, collects victim's funds
+
+Known exploits: Wise Lending (2024), Silo Finance (2022)
+
+Mitigations (any one is sufficient):
+  A. Virtual shares (OZ v4.9+): _decimalsOffset() returning >= 3
+     shares = assets * (supply + 10**offset) / (assets + 1)
+  B. Dead shares: mint initial shares to address(0) on first deposit
+  C. _convertToShares with +1 in denominator
+  D. Minimum initial deposit requirement
+
+Severity:
+  CRITICAL — no protection, vulnerable to trivial first-depositor attack
+  HIGH     — partial protection (only empty-supply check, not manipulation-resistant)`,
+			Severity:     SeverityCritical,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryDeFi,
+			Language:     LanguageSolidity,
+			DetectorName: "erc4626-inflation",
+			Tags:         []string{"erc4626", "vault", "inflation", "share-price", "first-depositor"},
+			Remediation: `Use OpenZeppelin's ERC4626 v4.9+ which includes virtual shares:
+
+  import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+
+  contract MyVault is ERC4626 {
+      // Override to add virtual shares (protects against inflation attack)
+      function _decimalsOffset() internal pure override returns (uint8) {
+          return 3; // 1000x virtual shares, makes attack economically infeasible
+      }
+  }
+
+Or implement dead shares on first deposit:
+
+  function _deposit(...) internal virtual override {
+      if (totalSupply() == 0) {
+          _mint(address(0xdead), 10 ** decimals()); // dead shares
+      }
+      super._deposit(...);
+  }`,
+			References: RuleReferences{
+				URLs: []string{
+					"https://docs.openzeppelin.com/contracts/4.x/erc4626#inflation-attack",
+					"https://blog.openzeppelin.com/a-novel-defense-against-erc4626-inflation-attacks",
+					"https://eips.ethereum.org/EIPS/eip-4626",
+				},
+				CWE: []string{"CWE-682"},
+			},
+			Examples: RuleExamples{
+				Vulnerable: `// VULNERABLE: no inflation protection
+contract MyVault is ERC4626 {
+    constructor(IERC20 asset) ERC4626(asset) {}
+    // Uses OZ pre-4.9 default: shares = assets * supply / totalAssets
+    // First depositor can steal all subsequent deposits
+}`,
+				Safe: `// SAFE: virtual shares prevent inflation attack
+contract MyVault is ERC4626 {
+    constructor(IERC20 asset) ERC4626(asset) {}
+
+    function _decimalsOffset() internal pure override returns (uint8) {
+        return 3; // 1000x virtual shares
+    }
+}`,
+			},
+			Enabled: true,
+		},
+
+		{
+			ID:               IDDefi005,
+			Name:             "Oracle Manipulation Vulnerability",
+			ShortDescription: "Price oracle lacks manipulation resistance or freshness validation.",
+			FullDescription: `DeFi protocols using price oracles are vulnerable when the oracle
+source can be manipulated (AMM spot prices) or become stale
+(off-chain oracles without freshness checks).
+
+Attack patterns:
+
+  AMM Spot Price (CRITICAL):
+    Attacker flash-loans → manipulates AMM reserves → protocol
+    reads manipulated price → attacker profits. All in one transaction.
+    getReserves() is the key signal — spot price is never safe.
+
+  Chainlink Staleness (HIGH):
+    Chainlink pauses during extreme market volatility. If the protocol
+    uses latestRoundData() without checking updatedAt, it will accept
+    a price that is hours or days old.
+
+  Answer Validity (HIGH):
+    Chainlink can return 0 or negative prices on circuit breaker events.
+    Without require(price > 0), this creates division errors or inflated
+    collateral values.
+
+Known exploits:
+  Mango Markets (2022, $117M) — spot price manipulation
+  Inverse Finance (2022,  $15M) — spot price oracle
+  Synthetix (2019,   $1B) — stale oracle price`,
+			Severity:     SeverityCritical,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryDeFi,
+			Language:     LanguageSolidity,
+			DetectorName: "oracle-manipulation",
+			Tags:         []string{"oracle", "price", "twap", "chainlink", "flash-loan"},
+			Remediation: `AMM spot price — use TWAP instead:
+  // Uniswap V3 TWAP (30 min window)
+  uint32[] memory secondsAgos = new uint32[](2);
+  secondsAgos[0] = 1800; secondsAgos[1] = 0;
+  (int56[] memory tickCumulatives,) = pool.observe(secondsAgos);
+
+Chainlink — always validate freshness and answer:
+  (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound)
+      = priceFeed.latestRoundData();
+  require(answer > 0,                          "Invalid price");
+  require(updatedAt >= block.timestamp - 3600, "Stale price");
+  require(answeredInRound >= roundId,          "Incomplete round");`,
+			References: RuleReferences{
+				URLs: []string{
+					"https://blog.openzeppelin.com/secure-smart-contract-guidelines-the-dangers-of-price-oracles",
+					"https://docs.chain.link/data-feeds/historical-data",
+					"https://uniswap.org/whitepaper-v3.pdf",
+				},
+				CWE: []string{"CWE-20"},
+			},
+			Examples: RuleExamples{
+				Vulnerable: `// VULNERABLE: instantaneous AMM reserves are used as a price
+function getPrice() external view returns (uint256) {
+    (uint112 r0, uint112 r1,) = pair.getReserves();
+    return uint256(r1) * 1e18 / uint256(r0);
+}`,
+				Safe: `// SAFE: TWAP resists single-block manipulation
+function getPrice() external view returns (uint256) {
+    uint32[] memory secondsAgos = new uint32[](2);
+    secondsAgos[0] = 1800;
+    secondsAgos[1] = 0;
+    (int56[] memory ticks,) = pool.observe(secondsAgos);
+    return priceFromTicks(ticks);
+}`,
+			},
+			Enabled: true,
+		},
+
+		{
+			ID:               IDDefi006,
+			Name:             "Dangerous Token Approval Pattern",
+			ShortDescription: "Unsafe ERC20 approve() usage — user-controlled target, unlimited allowance, or race condition.",
+			FullDescription: `ERC20 approve() has three distinct vulnerability patterns:
+
+  1. User-controlled spender (CRITICAL):
+     Passing a user-supplied address as the approve() target lets
+     any caller grant themselves unlimited allowance over protocol tokens.
+
+  2. Unlimited approval without access control (HIGH):
+     approve(X, type(uint256).max) in an unprotected function lets
+     anyone grant MAX allowance. If the spender is an upgradeable
+     contract, a future upgrade can drain the tokens.
+
+  3. Race condition (MEDIUM):
+     Changing a non-zero allowance via approve(X, N) creates a window
+     where a watching attacker can front-run and consume both the old
+     and new allowance. EIP-20 race condition, known since 2016.
+
+  4. safeApprove deprecated (MEDIUM):
+     OpenZeppelin's safeApprove() is deprecated. It has the same
+     race condition and reverts when changing from non-zero allowance.
+     Migrate to forceApprove() (OZ v5) or increaseAllowance().
+
+Known exploits:
+  Unlimited approve on upgradeable contracts → proxy upgrade → drain
+  Front-run on allowance change → double spend`,
+			Severity:     SeverityCritical,
+			Confidence:   ConfidenceHigh,
+			Category:     CategoryAccessControl,
+			Language:     LanguageSolidity,
+			DetectorName: "dangerous-approve",
+			Tags:         []string{"erc20", "approve", "allowance", "race-condition", "front-run"},
+			Remediation: `Pattern 1 — never approve to user-supplied address:
+  // Whitelist approved spenders, or use mapping
+  require(trustedSpenders[spender], "untrusted spender");
+  token.approve(spender, amount);
+
+Pattern 2 — protect unlimited approvals:
+  function approveMax(address token, address spender)
+      external onlyOwner {          // access control required
+      IERC20(token).approve(spender, type(uint256).max);
+  }
+
+Pattern 3 — avoid race condition:
+  // Option A: use increaseAllowance / decreaseAllowance
+  token.increaseAllowance(spender, delta);
+  // Option B: zero first (two transactions, less preferred)
+  token.approve(spender, 0);
+  token.approve(spender, newAmount);
+  // Option C: OZ v5 forceApprove
+  SafeERC20.forceApprove(token, spender, newAmount);
+
+Pattern 4 — migrate from safeApprove:
+  // OZ v5
+  import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+  SafeERC20.forceApprove(IERC20(token), spender, amount);`,
+			References: RuleReferences{
+				URLs: []string{
+					"https://docs.openzeppelin.com/contracts/5.x/api/token/erc20#SafeERC20-forceApprove-contract-IERC20-address-uint256-",
+					"https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729",
+					"https://eips.ethereum.org/EIPS/eip-2612",
+				},
+				SWC: []string{"SWC-114"},
+				CWE: []string{"CWE-362"},
+			},
+			Examples: RuleExamples{
+				Vulnerable: `// VULNERABLE: caller controls the approval target
+function approveTokens(address spender, uint256 amount) external {
+    token.approve(spender, amount);
+}`,
+				Safe: `// SAFE: spender is trusted and allowance update uses forceApprove
+function approveRouter(uint256 amount) external onlyOwner {
+    SafeERC20.forceApprove(token, trustedRouter, amount);
+}`,
 			},
 			Enabled: true,
 		},

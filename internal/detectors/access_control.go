@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ayb-blc/solsec/internal/analyzer"
+	"github.com/ayb-blc/solsec/internal/pathtracker"
 )
 
 // AccessControlDetector finds missing or weak authorization around sensitive actions.
@@ -138,9 +139,13 @@ func (d *AccessControlDetector) Analyze(
 	var findings []analyzer.Finding
 
 	functions := extractFunctionBlocks(lines)
+	pt := pathtracker.New()
 
 	for _, fn := range functions {
 		if fn.visibility == "internal" || fn.visibility == "private" {
+			continue
+		}
+		if pt.HasAccessControlGuard(functionBodyForPathTracking(fn.lines)) {
 			continue
 		}
 

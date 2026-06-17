@@ -130,6 +130,7 @@ func (d *StorageGapMissingDetector) Analyze(
 
 type contractBlock struct {
 	name       string
+	header     string
 	lines      []string
 	startLine  int
 	isAbstract bool
@@ -151,6 +152,7 @@ func (d *StorageGapMissingDetector) extractContractBlocks(
 			if m != nil {
 				current = &contractBlock{
 					name:       m[1],
+					header:     strings.TrimSpace(line),
 					startLine:  lineNum,
 					isAbstract: strings.Contains(line, "abstract"),
 					lines:      []string{line},

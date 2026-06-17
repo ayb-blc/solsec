@@ -43,7 +43,6 @@ func NewConstructorInUpgradeableDetector() *ConstructorInUpgradeableDetector {
 			regexp.MustCompile(`\bInitializable\b`),
 			regexp.MustCompile(`\w+Upgradeable\b`),
 			regexp.MustCompile(`\w+Upgradable\b`),
-			regexp.MustCompile(`\bfunction\s+initialize\s*\(`),
 			regexp.MustCompile(`\b__gap\b`),
 			regexp.MustCompile(`__\w+_init\s*\(`),
 		},

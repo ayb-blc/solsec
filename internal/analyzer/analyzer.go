@@ -109,6 +109,13 @@ func (a *Analyzer) InheritanceGraph() *inheritancegraph.Graph {
 	return a.inheritanceGraph
 }
 
+// BuildInheritanceGraph builds project context for an explicit file set.
+// It is useful for tooling that controls file collection but still wants
+// graph-aware detectors to see the whole project during per-file analysis.
+func (a *Analyzer) BuildInheritanceGraph(root string, files []string) {
+	a.buildInheritanceGraph(root, files)
+}
+
 // AnalysisResult contains the findings produced for one file.
 type AnalysisResult struct {
 	Filepath string

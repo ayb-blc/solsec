@@ -15,6 +15,9 @@ func DefaultDetectors() []analyzer.Detector {
 		NewUninitializedOwnableDetector(),
 		NewFlashLoanDetector(),
 		NewSignatureReplayDetector(),
+		NewERC4626InflationDetector(),
+		NewOracleManipulationDetector(),
+		NewDangerousApproveDetector(),
 	}
 }
 

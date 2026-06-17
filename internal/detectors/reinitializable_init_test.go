@@ -98,6 +98,51 @@ contract InitializableUpgradeabilityProxy {
 	}
 }
 
+func TestReinitializableInit_InterfaceAndLibrary_NoFinding(t *testing.T) {
+	source := `
+pragma solidity >=0.5.0;
+
+interface IPoolActions {
+    function initialize(uint160 sqrtPriceX96) external;
+}
+
+library Oracle {
+    struct Observation { bool initialized; }
+    function initialize(Observation[65535] storage self) internal {
+        self[0] = Observation({initialized: true});
+    }
+}`
+	d := detectors.NewReinitializableInitDetector()
+	findings, err := d.Analyze(strings.Split(source, "\n"), source, "Pool.sol")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("interface/library initialize should not trigger, got %d: %#v", len(findings), findings)
+	}
+}
+
+func TestReinitializableInit_ZeroStateGuard_NoFinding(t *testing.T) {
+	source := `
+pragma solidity ^0.8.0;
+contract Pool {
+    struct Slot0 { uint160 sqrtPriceX96; bool unlocked; }
+    Slot0 public slot0;
+    function initialize(uint160 sqrtPriceX96) external {
+        require(slot0.sqrtPriceX96 == 0, "already initialized");
+        slot0 = Slot0({sqrtPriceX96: sqrtPriceX96, unlocked: true});
+    }
+}`
+	d := detectors.NewReinitializableInitDetector()
+	findings, err := d.Analyze(strings.Split(source, "\n"), source, "Pool.sol")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("zero state guard should suppress initialize finding, got %d", len(findings))
+	}
+}
+
 func analyzeInitFixture(t *testing.T, path string) []analyzer.Finding {
 	t.Helper()
 	data, err := os.ReadFile(path)

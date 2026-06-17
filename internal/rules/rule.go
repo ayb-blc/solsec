@@ -18,6 +18,7 @@ const (
 	CategoryOnChain        Category = "ONCHAIN"
 	CategoryInterContract  Category = "INTERCONTRACT"
 	CategoryShadowing      Category = "SHADOW"
+	CategoryDeFi           Category = "DEFI"
 	CategoryGas            Category = "GAS"
 )
 
