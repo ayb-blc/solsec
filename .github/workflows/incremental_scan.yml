@@ -28,14 +28,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install solc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:ethereum/ethereum
-          sudo apt-get update
-          sudo apt-get install -y solc
-
       - name: Build solsec
         run: go install ./cmd/solsec
 
